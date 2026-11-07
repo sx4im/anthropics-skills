@@ -12,7 +12,6 @@ ranges, unless --force is passed.
 
 import io
 import json
-import os
 import subprocess
 import sys
 import tempfile
