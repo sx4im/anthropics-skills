@@ -14,6 +14,7 @@ import sys
 import tempfile
 import time
 import zipfile
+import xml.etree.ElementTree as ET
 from pathlib import Path
 
 from office.soffice import get_soffice_env, run_soffice
@@ -26,6 +27,8 @@ SOFFICE_MISSING = "soffice not found on PATH; LibreOffice is required to recalcu
 MAX_LOCATIONS = 100
 
 EXTERNAL_REF_RE = re.compile(r"""(?<![\w"\[])'?\[\d+\][^!"\[\]]*'?!""")
+DATA_TABLE_FORMULA_RE = re.compile(r"""<f\b[^>]*\bt=["']dataTable["'][^>]*>""")
+DATA_TABLE_REF_RE = re.compile(r"""\bref=["']([^"']+)["']""")
 
 RECALCULATE_MACRO = """<?xml version="1.0" encoding="UTF-8"?>
 <!DOCTYPE script:module PUBLIC "-//OpenOffice.org//DTD OfficeDocument 1.0//EN" "module.dtd">
@@ -121,6 +124,59 @@ def external_links_at_risk(filename):
         return at_risk
 
 
+def _sheet_names(archive, names):
+    """Map worksheet part names (xl/worksheets/sheet1.xml) to sheet names."""
+    if "xl/workbook.xml" not in names or "xl/_rels/workbook.xml.rels" not in names:
+        return {}
+    try:
+        workbook = ET.fromstring(archive.read("xl/workbook.xml"))
+        rels = ET.fromstring(archive.read("xl/_rels/workbook.xml.rels"))
+    except ET.ParseError:
+        return {}
+    main_ns = "{http://schemas.openxmlformats.org/spreadsheetml/2006/main}"
+    rel_ns = "{http://schemas.openxmlformats.org/package/2006/relationships}"
+    rid_attr = "{http://schemas.openxmlformats.org/officeDocument/2006/relationships}id"
+    targets = {rel.get("Id"): rel.get("Target") for rel in rels.findall(f"{rel_ns}Relationship")}
+    mapping = {}
+    for sheet in workbook.findall(f"{main_ns}sheets/{main_ns}sheet"):
+        target = targets.get(sheet.get(rid_attr))
+        if not target:
+            continue
+        part = target.lstrip("/")
+        if not part.startswith("xl/"):
+            part = "xl/" + part
+        mapping[part] = sheet.get("name")
+    return mapping
+
+
+def data_tables_at_risk(filename):
+    """Return ['Sheet!Range', ...] for every Excel data table in the workbook.
+
+    Scans the worksheet XML for <f t="dataTable"> records. LibreOffice rewrites
+    those cells as ordinary TABLE() formulas, so the data table itself is lost.
+    """
+    try:
+        with zipfile.ZipFile(filename) as archive:
+            names = archive.namelist()
+            sheet_names = _sheet_names(archive, names)
+            at_risk = []
+            for name in names:
+                if not (name.startswith("xl/worksheets/") and name.endswith(".xml")):
+                    continue
+                try:
+                    xml = archive.read(name).decode("utf-8", errors="replace")
+                except (KeyError, OSError):
+                    continue
+                sheet = sheet_names.get(name, Path(name).stem)
+                for tag in DATA_TABLE_FORMULA_RE.findall(xml):
+                    ref = DATA_TABLE_REF_RE.search(tag)
+                    if ref:
+                        at_risk.append(f"{sheet}!{ref.group(1)}")
+            return at_risk
+    except (zipfile.BadZipFile, OSError):
+        return []
+
+
 def recalc(filename, timeout=30, force=False):
     if not Path(filename).exists():
         return {"error": f"File {filename} does not exist"}
@@ -153,6 +209,29 @@ def recalc(filename, timeout=30, force=False):
                 ),
                 "external_link_cells": shown,
                 "external_link_cells_truncated": max(0, len(at_risk) - len(shown)),
+            }
+
+        try:
+            tables = data_tables_at_risk(filename)
+        except Exception as e:
+            return {"error": f"Could not inspect {filename} for data tables: {e}"}
+        if tables:
+            shown = tables[:MAX_LOCATIONS]
+            return {
+                "error": (
+                    "Refusing to recalculate: this workbook contains Excel data table(s) at "
+                    f"{', '.join(shown)}"
+                    + (
+                        f" (and {len(tables) - len(shown)} more)"
+                        if len(tables) > len(shown)
+                        else ""
+                    )
+                    + ", and LibreOffice rewrites each table's cells as ordinary TABLE() "
+                    "formulas, so the data tables would be lost. Recalculate the workbook "
+                    "in Excel itself, or pass --force to accept the rewrite."
+                ),
+                "data_table_ranges": shown,
+                "data_table_ranges_truncated": max(0, len(tables) - len(shown)),
             }
 
     with tempfile.TemporaryDirectory(
@@ -293,7 +372,7 @@ def main():
         print("  - error_summary: Breakdown by error type with locations")
         print("    - #VALUE!, #DIV/0!, #REF!, #NAME?, #NULL!, #NUM!, #N/A")
         print("\nOn any failure the JSON has an 'error' key and no 'status'.")
-        print("--force recalculates even when it would destroy external links.")
+        print("--force recalculates even when it would destroy external links or data tables.")
         sys.exit(1)
 
     filename = args[0]
