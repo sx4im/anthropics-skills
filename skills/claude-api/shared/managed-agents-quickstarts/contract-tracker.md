@@ -22,7 +22,9 @@ mcp_servers:
     url: https://mcp.box.com
   - name: asana
     type: url
-    url: https://mcp.asana.com/sse
+    url: https://mcp.asana.com/v2/mcp
+    # Note: Asana's V2 server does not support dynamic client registration.
+    # The OAuth credential must come from a pre-registered Asana MCP app.
 tools:
   - type: agent_toolset_20260401
   - type: mcp_toolset
