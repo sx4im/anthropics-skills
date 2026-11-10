@@ -235,4 +235,4 @@ ls -1 "$PWD"/slide-*.jpg
 
 ## Dependencies
 
-`pptxgenjs` (npm, preinstalled — install only if `require('pptxgenjs')` fails) · `markitdown[pptx]`, `Pillow`, `defusedxml`, `lxml` (pip — text dump, thumbnail, clean, validate) · LibreOffice (`soffice`, auto-configured for sandboxed environments via `scripts/office/soffice.py`) · `pdftoppm` (Poppler)
+`pptxgenjs` (npm, preinstalled — install only if `require('pptxgenjs')` fails) · `markitdown[pptx]`, `Pillow`, `defusedxml`, `lxml` (pip — text dump, thumbnail, clean, validate) · LibreOffice (`soffice`, a prerequisite — install it first if missing; `scripts/office/soffice.py` locates it on PATH or in a standard install location) · `pdftoppm` (Poppler)

@@ -3,6 +3,10 @@ Helper for running LibreOffice (soffice) in environments where AF_UNIX
 sockets may be blocked (e.g., sandboxed VMs).  Detects the restriction
 at runtime and applies an LD_PRELOAD shim if needed.
 
+Locates the soffice binary first: SOFFICE_PATH, then PATH, then the
+standard install locations (e.g. /Applications/LibreOffice.app on macOS).
+LibreOffice is a prerequisite -- nothing here installs it.
+
 Usage:
     from office.soffice import run_soffice
 
@@ -17,11 +21,55 @@ callers that build their own argv (they must pass -env:UserInstallation too).
 
 import contextlib
 import os
+import shutil
 import socket
 import subprocess
 import tempfile
 from collections.abc import Iterable
 from pathlib import Path
+
+
+def find_soffice() -> str | None:
+    """Locate the soffice binary, or None when LibreOffice is not installed.
+
+    Order: SOFFICE_PATH override, PATH, then the standard install locations
+    (macOS app bundle, distro/snap/flatpak paths, Windows Program Files).
+    """
+    override = os.environ.get("SOFFICE_PATH")
+    if override:
+        return override
+
+    for name in ("soffice", "libreoffice"):
+        found = shutil.which(name)
+        if found:
+            return found
+
+    for candidate in _KNOWN_SOFFICE_PATHS:
+        if Path(candidate).is_file():
+            return candidate
+
+    return None
+
+
+# Standard install locations, checked when soffice is not on PATH.
+_KNOWN_SOFFICE_PATHS = [
+    "/Applications/LibreOffice.app/Contents/MacOS/soffice",
+    str(Path.home() / "Applications" / "LibreOffice.app" / "Contents" / "MacOS" / "soffice"),
+    "/usr/bin/soffice",
+    "/usr/local/bin/soffice",
+    "/snap/bin/libreoffice",
+    str(Path.home() / ".local" / "share" / "flatpak" / "exports" / "bin" / "org.libreoffice.LibreOffice"),
+    "/var/lib/flatpak/exports/bin/org.libreoffice.LibreOffice",
+    r"C:\Program Files\LibreOffice\program\soffice.exe",
+    r"C:\Program Files (x86)\LibreOffice\program\soffice.exe",
+]
+
+_SOFFICE_NOT_FOUND = (
+    "LibreOffice (soffice) was not found. Install LibreOffice first "
+    "(macOS: LibreOffice.app or `brew install --cask libreoffice`; "
+    "Linux: your distro's libreoffice package; Windows: libreoffice.org), "
+    "make sure `soffice` is on PATH, or set SOFFICE_PATH to the binary."
+)
 
 
 def get_soffice_env() -> dict:
@@ -36,6 +84,9 @@ def get_soffice_env() -> dict:
 
 
 def run_soffice(args: Iterable[str], **kwargs) -> subprocess.CompletedProcess:
+    exe = find_soffice()
+    if exe is None:
+        raise FileNotFoundError(_SOFFICE_NOT_FOUND)
     args = list(args)
     with contextlib.ExitStack() as stack:
         if not any(str(a).startswith("-env:UserInstallation") for a in args):
@@ -43,7 +94,7 @@ def run_soffice(args: Iterable[str], **kwargs) -> subprocess.CompletedProcess:
                 tempfile.TemporaryDirectory(prefix="lo_profile_", ignore_cleanup_errors=True)
             )
             args = [f"-env:UserInstallation={Path(profile).as_uri()}"] + args
-        return subprocess.run(["soffice"] + args, env=get_soffice_env(), **kwargs)
+        return subprocess.run([exe] + args, env=get_soffice_env(), **kwargs)
 
 
 

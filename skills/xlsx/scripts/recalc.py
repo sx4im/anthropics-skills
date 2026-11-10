@@ -16,7 +16,7 @@ import time
 import zipfile
 from pathlib import Path
 
-from office.soffice import get_soffice_env, run_soffice
+from office.soffice import find_soffice, get_soffice_env, run_soffice
 
 from openpyxl import load_workbook
 
@@ -61,8 +61,8 @@ def setup_libreoffice_macro(profile_dir: Path, timeout=30):
             capture_output=True,
             timeout=timeout,
         )
-    except FileNotFoundError:
-        return None, SOFFICE_MISSING
+    except FileNotFoundError as e:
+        return None, str(e) or SOFFICE_MISSING
     except subprocess.TimeoutExpired:
         return None, "LibreOffice timed out creating its profile; formulas were NOT recalculated"
 
@@ -172,7 +172,7 @@ def _recalc_with_profile(filename, abs_path, timeout, profile_dir: Path):
     before = _stamp(abs_path)
 
     cmd = [
-        "soffice",
+        find_soffice() or "soffice",
         "--headless",
         "--norestore",
         f"-env:UserInstallation={profile_url}",

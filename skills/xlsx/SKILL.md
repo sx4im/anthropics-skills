@@ -96,4 +96,4 @@ lone edited cell mid-row is the commonest silent error · guard denominators tha
 
 ## Dependencies
 
-`openpyxl`, `pandas`, `markitdown` (pip, preinstalled — install only if an import fails or the command is missing) · LibreOffice (`soffice`, auto-configured for sandboxed environments via `scripts/office/soffice.py`)
+`openpyxl`, `pandas`, `markitdown` (pip, preinstalled — install only if an import fails or the command is missing) · LibreOffice (`soffice`, a prerequisite for recalculation — install it first if missing: macOS `brew install --cask libreoffice` or LibreOffice.app, Linux your distro's `libreoffice` package; `scripts/office/soffice.py` locates it on PATH or in a standard install location)
