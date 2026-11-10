@@ -17,11 +17,36 @@ callers that build their own argv (they must pass -env:UserInstallation too).
 
 import contextlib
 import os
+import shutil
 import socket
 import subprocess
 import tempfile
 from collections.abc import Iterable
 from pathlib import Path
+from typing import Optional
+
+
+# Well-known LibreOffice install locations, checked when soffice is not on
+# PATH (e.g. a stock macOS install). SKILL.md used to claim soffice was
+# "auto-configured"; it is in fact a prerequisite (issue #2185).
+KNOWN_SOFFICE_PATHS = (
+    "/Applications/LibreOffice.app/Contents/MacOS/soffice",  # macOS
+    "/usr/bin/soffice",
+    "/usr/local/bin/soffice",
+    "/opt/libreoffice/program/soffice",
+    r"C:\Program Files\LibreOffice\program\soffice.exe",
+    r"C:\Program Files (x86)\LibreOffice\program\soffice.exe",
+)
+
+
+def find_soffice() -> Optional[str]:
+    """Locate the soffice binary: PATH first, then well-known install paths."""
+    if (on_path := shutil.which("soffice")) is not None:
+        return on_path
+    for candidate in KNOWN_SOFFICE_PATHS:
+        if os.path.isfile(candidate) and os.access(candidate, os.X_OK):
+            return candidate
+    return None
 
 
 def get_soffice_env() -> dict:
@@ -36,6 +61,12 @@ def get_soffice_env() -> dict:
 
 
 def run_soffice(args: Iterable[str], **kwargs) -> subprocess.CompletedProcess:
+    exe = find_soffice()
+    if exe is None:
+        raise FileNotFoundError(
+            "soffice not found: LibreOffice is required. Install it "
+            "(https://www.libreoffice.org/download/) or put soffice on PATH."
+        )
     args = list(args)
     with contextlib.ExitStack() as stack:
         if not any(str(a).startswith("-env:UserInstallation") for a in args):
@@ -43,7 +74,7 @@ def run_soffice(args: Iterable[str], **kwargs) -> subprocess.CompletedProcess:
                 tempfile.TemporaryDirectory(prefix="lo_profile_", ignore_cleanup_errors=True)
             )
             args = [f"-env:UserInstallation={Path(profile).as_uri()}"] + args
-        return subprocess.run(["soffice"] + args, env=get_soffice_env(), **kwargs)
+        return subprocess.run([exe] + args, env=get_soffice_env(), **kwargs)
 
 
 

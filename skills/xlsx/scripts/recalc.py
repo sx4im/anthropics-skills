@@ -16,7 +16,7 @@ import time
 import zipfile
 from pathlib import Path
 
-from office.soffice import get_soffice_env, run_soffice
+from office.soffice import find_soffice, get_soffice_env, run_soffice
 
 from openpyxl import load_workbook
 
@@ -171,8 +171,14 @@ def _recalc_with_profile(filename, abs_path, timeout, profile_dir: Path):
 
     before = _stamp(abs_path)
 
+    # The recalc invocation runs soffice directly (not via run_soffice), so
+    # resolve the binary the same way instead of assuming it is on PATH.
+    exe = find_soffice()
+    if exe is None:
+        return {"error": SOFFICE_MISSING}
+
     cmd = [
-        "soffice",
+        exe,
         "--headless",
         "--norestore",
         f"-env:UserInstallation={profile_url}",
