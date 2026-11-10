@@ -13,7 +13,7 @@ license: Complete terms in LICENSE.txt
 | **Quick look** at a sheet | `markitdown file.xlsx` — `## SheetName` per sheet; reads `.xlsm` too. No cell coordinates, so don't plan edits from it |
 | **Read** a model (formulas *and* values) | two `load_workbook` passes — see gotchas |
 
-> `openpyxl`, `pandas`, and `markitdown` are preinstalled — do not run `pip install` first; write the script and import directly. Only if an import fails (or the `markitdown` command is missing): `pip install` the missing package.
+> `openpyxl`, `pandas`, and `markitdown` are preinstalled **in the sandbox** — do not run `pip install` first; write the script and import directly. Outside the sandbox they are usually missing (e.g. stock macOS system Python): set up a virtual environment first — see Dependencies — and install them there; never `pip install` into system Python. Only if an import fails in the sandbox (or the `markitdown` command is missing): `pip install` the missing package.
 
 > Script paths below are relative to this skill's directory.
 
@@ -96,4 +96,12 @@ lone edited cell mid-row is the commonest silent error · guard denominators tha
 
 ## Dependencies
 
-`openpyxl`, `pandas`, `markitdown` (pip, preinstalled — install only if an import fails or the command is missing) · LibreOffice (`soffice`, auto-configured for sandboxed environments via `scripts/office/soffice.py`)
+`openpyxl`, `pandas`, `markitdown` (pip; preinstalled in the sandbox — install only if an import fails or the command is missing) · LibreOffice (`soffice`, auto-configured for sandboxed environments via `scripts/office/soffice.py`)
+
+Outside the sandbox, set up a virtual environment first — macOS system Python is externally managed, so plain `pip install` fails there, and `--break-system-packages` or `sudo pip install` can break the system Python:
+
+```bash
+python3 -m venv .venv
+source .venv/bin/activate
+pip install openpyxl pandas markitdown
+```
